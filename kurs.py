@@ -9,35 +9,22 @@ from datetime import timedelta
 model = load_model('model_lstm.h5')
 scaler = joblib.load('scaler.pkl')
 
-# Konfigurasi
 n_lookback = 60
 
-# Judul
 st.title("📈 Prediksi Kurs USD/IDR")
 st.write("Model LSTM untuk memprediksi nilai tukar USD/IDR dalam beberapa hari ke depan.")
 
-# Input hari
 n_days = st.slider("Berapa hari ke depan yang ingin diprediksi?", 1, 180)
 
-# Upload file
 uploaded_file = st.file_uploader("Upload file CSV", type=["csv"])
 if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
+    # Paksa baca index sebagai datetime
+    df = pd.read_csv(uploaded_file, index_col=0, parse_dates=True)
 
     # Cek kolom 'Close'
     if 'Close' not in df.columns:
         st.error("❌ Kolom 'Close' tidak ditemukan. Pastikan file CSV berisi kolom 'Close'.")
     else:
-        # Tangani tanggal
-        if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'])
-            df.set_index('Date', inplace=True)
-        else:
-            # Coba gunakan index jika sudah datetime
-            if not isinstance(df.index, pd.DatetimeIndex):
-                st.warning("Index tidak bertipe datetime dan kolom 'Date' tidak ditemukan. Harap periksa file.")
-                st.stop()
-
         # Tampilkan data aktual
         st.subheader("📊 Data Kurs Aktual:")
         st.line_chart(df['Close'])
@@ -60,11 +47,9 @@ if uploaded_file is not None:
         forecast_dates = [last_date + timedelta(days=i + 1) for i in range(n_days)]
         forecast_df = pd.DataFrame({'Forecast': forecast}, index=forecast_dates)
 
-        # Tampilkan hasil prediksi
         st.subheader("📈 Hasil Prediksi:")
         st.line_chart(forecast_df)
 
-        # Tombol download
         st.download_button(
             "📥 Download Hasil Prediksi (CSV)",
             forecast_df.to_csv().encode('utf-8'),
