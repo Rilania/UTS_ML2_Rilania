@@ -16,59 +16,70 @@ n_lookback = 60
 st.title("📈 Prediksi Kurs USD/IDR")
 st.write("Model LSTM untuk memprediksi nilai tukar USD/IDR dalam beberapa hari ke depan.")
 
-# Input hari prediksi
+# Input hari
 n_days = st.slider("Berapa hari ke depan yang ingin diprediksi?", 1, 180)
 
-# Upload data
-uploaded_file = st.file_uploader("Upload file CSV", type=['csv'])
+# Upload file
+uploaded_file = st.file_uploader("Upload file CSV", type=["csv"])
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
 
-if uploaded_file:
-    df = pd.read_csv(uploaded_file, index_col=0)
+    # Tangani tanggal: cek apakah ada kolom 'Date'
+    if 'Date' in df.columns:
+        df['Date'] = pd.to_datetime(df['Date'])
+        df.set_index('Date', inplace=True)
+    else:
+        # Kalau tidak ada, cek apakah index sudah datetime
+        try:
+            df.index = pd.to_datetime(df.index)
+        except Exception:
+            st.error("❌ Kolom 'Date' tidak ditemukan dan index bukan datetime. Harap periksa file.")
+            st.stop()
 
-    # Coba ubah index ke datetime
-    try:
-        df.index = pd.to_datetime(df.index)
-    except Exception:
-        st.error("Index tidak bertipe datetime dan kolom 'Date' tidak ditemukan. Harap periksa file.")
-        st.stop()
-
-    # Validasi kolom Close
+    # Cek kolom 'Close'
     if 'Close' not in df.columns:
-        st.error("Kolom 'Close' tidak ditemukan di dataset.")
+        st.error("❌ Kolom 'Close' tidak ditemukan. Pastikan file CSV berisi kolom 'Close'.")
         st.stop()
 
-    if df['Close'].isnull().any():
-        st.error("Dataset mengandung nilai kosong (NaN) di kolom 'Close'. Harap bersihkan datanya.")
-        st.stop()
-
-    if df.shape[0] < n_lookback:
-        st.error(f"Dataset minimal harus punya {n_lookback} baris.")
-        st.stop()
-
+    # Tampilkan data aktual
     st.subheader("📊 Data Kurs Aktual:")
     st.line_chart(df['Close'])
 
-    # Preprocess
+    # Proses scaling
     last_close = df['Close'].values.reshape(-1, 1)
-    last_scaled = scaler.transform(last_close)
+    try:
+        last_scaled = scaler.transform(last_close)
+    except Exception as e:
+        st.error(f"❌ Error saat menormalisasi data dengan scaler: {e}")
+        st.stop()
+
+    # Inisialisasi data untuk prediksi
     X_ = last_scaled[-n_lookback:]
     forecast_scaled = []
 
+    # Prediksi
     for _ in range(n_days):
         X_input = X_.reshape(1, n_lookback, 1)
         y_pred = model.predict(X_input, verbose=0)
         forecast_scaled.append(y_pred[0, 0])
         X_ = np.vstack([X_[1:], [[y_pred[0, 0]]]])
 
-    # Inverse transform
+    # Invers scaling hasil prediksi
     forecast = scaler.inverse_transform(np.array(forecast_scaled).reshape(-1, 1)).flatten()
+
+    # Buat tanggal hasil prediksi
     last_date = df.index[-1]
-    forecast_dates = [last_date + timedelta(days=i+1) for i in range(n_days)]
+    forecast_dates = [last_date + timedelta(days=i + 1) for i in range(n_days)]
     forecast_df = pd.DataFrame({'Forecast': forecast}, index=forecast_dates)
 
-    # Tampilkan hasil
-    st.subheader("📉 Hasil Prediksi:")
+    # Tampilkan hasil prediksi
+    st.subheader("📈 Hasil Prediksi:")
     st.line_chart(forecast_df)
 
-    # Download
-    st.download_button("⬇️ Download Forecast (CSV)", forecast_df.to_csv().encode('utf-8'), "forecast.csv", "text/csv")
+    # Download button
+    st.download_button(
+        "📥 Download Hasil Prediksi (CSV)",
+        forecast_df.to_csv().encode('utf-8'),
+        "forecast.csv",
+        "text/csv"
+    )
