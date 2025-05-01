@@ -20,48 +20,54 @@ st.write("Model LSTM untuk memprediksi nilai tukar USD/IDR dalam beberapa hari k
 n_days = st.slider("Berapa hari ke depan yang ingin diprediksi?", 1, 180)
 
 # Upload file
-uploaded_file = st.file_uploader("Upload file CSV", type=['csv'])
+uploaded_file = st.file_uploader("Upload file CSV", type=["csv"])
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
 
-if uploaded_file:
-    # Baca data dan bersihkan
-    df = pd.read_csv(uploaded_file, skiprows=2)  # Lewati header Yahoo
-    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-    df.set_index('Date', inplace=True)
-    df = df[['Close']]
-    df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
-    df.dropna(inplace=True)
+    # Cek kolom 'Close'
+    if 'Close' not in df.columns:
+        st.error("❌ Kolom 'Close' tidak ditemukan. Pastikan file CSV berisi kolom 'Close'.")
+    else:
+        # Tangani tanggal
+        if 'Date' in df.columns:
+            df['Date'] = pd.to_datetime(df['Date'])
+            df.set_index('Date', inplace=True)
+        else:
+            # Coba gunakan index jika sudah datetime
+            if not isinstance(df.index, pd.DatetimeIndex):
+                st.warning("Index tidak bertipe datetime dan kolom 'Date' tidak ditemukan. Harap periksa file.")
+                st.stop()
 
-    st.subheader("Data Kurs Aktual:")
-    st.line_chart(df['Close'])
+        # Tampilkan data aktual
+        st.subheader("📊 Data Kurs Aktual:")
+        st.line_chart(df['Close'])
 
-    # Preprocessing input
-    last_close = df['Close'].values.reshape(-1, 1)
-    last_scaled = scaler.transform(last_close)
-    X_ = last_scaled[-n_lookback:]
+        # Prediksi
+        last_close = df['Close'].values.reshape(-1, 1)
+        last_scaled = scaler.transform(last_close)
 
-    # Forecast loop
-    forecast_scaled = []
-    for _ in range(n_days):
-        X_input = X_.reshape(1, n_lookback, 1)
-        y_pred = model.predict(X_input, verbose=0)
-        forecast_scaled.append(y_pred[0, 0])
-        X_ = np.vstack([X_[1:], [[y_pred[0, 0]]]])
+        X_ = last_scaled[-n_lookback:]
+        forecast_scaled = []
 
-    # Inverse transform
-    forecast = scaler.inverse_transform(np.array(forecast_scaled).reshape(-1, 1)).flatten()
+        for _ in range(n_days):
+            X_input = X_.reshape(1, n_lookback, 1)
+            y_pred = model.predict(X_input, verbose=0)
+            forecast_scaled.append(y_pred[0, 0])
+            X_ = np.vstack([X_[1:], [[y_pred[0, 0]]]])
 
-    # Buat tanggal untuk forecast
-    last_date = df.index[-1]
-    forecast_dates = [last_date + timedelta(days=i+1) for i in range(n_days)]
-    forecast_df = pd.DataFrame({'Forecast': forecast}, index=forecast_dates)
+        forecast = scaler.inverse_transform(np.array(forecast_scaled).reshape(-1, 1)).flatten()
+        last_date = df.index[-1]
+        forecast_dates = [last_date + timedelta(days=i + 1) for i in range(n_days)]
+        forecast_df = pd.DataFrame({'Forecast': forecast}, index=forecast_dates)
 
-    st.subheader("Hasil Prediksi:")
-    st.line_chart(forecast_df)
+        # Tampilkan hasil prediksi
+        st.subheader("📈 Hasil Prediksi:")
+        st.line_chart(forecast_df)
 
-    # Tombol unduh
-    st.download_button(
-        label="📥 Download Forecast (CSV)",
-        data=forecast_df.to_csv().encode('utf-8'),
-        file_name='forecast.csv',
-        mime='text/csv'
-    )
+        # Tombol download
+        st.download_button(
+            "📥 Download Hasil Prediksi (CSV)",
+            forecast_df.to_csv().encode('utf-8'),
+            "forecast.csv",
+            "text/csv"
+        )
